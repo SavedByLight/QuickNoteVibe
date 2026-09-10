@@ -4,8 +4,10 @@ import android.content.Intent
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.ViewGroup
+import android.widget.EditText
 import android.widget.TextView
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -66,6 +68,30 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun renameNote(note: Note) {
+        val input = EditText(this).apply {
+            setText(note.title)
+            setSelection(text.length)
+            hint = "Note title"
+            setPadding(48, 32, 48, 32)
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle("Rename note")
+            .setView(input)
+            .setPositiveButton("Rename") { _, _ ->
+                val newTitle = input.text.toString().trim()
+                if (newTitle == note.title) return@setPositiveButton
+                note.title = newTitle
+                note.synced = false
+                NotesRepository.saveAndSync(scope, this, note, notes) {
+                    adapter.notifyDataSetChanged()
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
     inner class NotesAdapter : RecyclerView.Adapter<NotesAdapter.VH>() {
         inner class VH(v: android.view.View) : RecyclerView.ViewHolder(v) {
             val title: TextView = v.findViewById(android.R.id.text1)
@@ -89,6 +115,10 @@ class MainActivity : AppCompatActivity() {
                     Intent(this@MainActivity, NoteEditorActivity::class.java)
                         .putExtra("note_id", n.id)
                 )
+            }
+            h.itemView.setOnLongClickListener {
+                renameNote(n)
+                true
             }
         }
     }
