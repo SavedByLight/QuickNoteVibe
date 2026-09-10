@@ -1,25 +1,62 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:layout_width="match_parent" android:layout_height="match_parent"
-    android:orientation="vertical" android:padding="16dp">
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="16dp">
 
-    <EditText android:id="@+id/etTitle" android:layout_width="match_parent"
-        android:layout_height="wrap_content" android:hint="Title"
-        android:inputType="textCapSentences" android:textSize="22sp" />
+    <EditText
+        android:id="@+id/etTitle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="Title"
+        android:inputType="textCapSentences"
+        android:textSize="22sp" />
 
-    <EditText android:id="@+id/etBody" android:layout_width="match_parent"
-        android:layout_height="0dp" android:layout_weight="1"
-        android:gravity="top" android:hint="Write your note…"
+    <EditText
+        android:id="@+id/etFilename"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="GitHub file name (e.g. meeting-notes)"
+        android:inputType="text"
+        android:textSize="14sp" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Saved on GitHub as notes/&lt;name&gt;.md"
+        android:textSize="12sp"
+        android:textColor="#888888"
+        android:paddingBottom="8dp" />
+
+    <EditText
+        android:id="@+id/etBody"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:gravity="top"
+        android:hint="Write your note…"
         android:inputType="textMultiLine" />
 
-    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
-        android:orientation="horizontal" android:gravity="end">
-        <ImageButton android:id="@+id/btnDelete" android:layout_width="48dp"
-            android:layout_height="48dp" android:visibility="gone"
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="end">
+        <ImageButton
+            android:id="@+id/btnDelete"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:visibility="gone"
             android:src="@android:drawable/ic_menu_delete"
-            android:background="?attr/selectableItemBackgroundBorderless" />
-        <ImageButton android:id="@+id/btnSave" android:layout_width="48dp"
-            android:layout_height="48dp" android:src="@android:drawable/ic_menu_save"
-            android:background="?attr/selectableItemBackgroundBorderless" />
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Delete" />
+        <ImageButton
+            android:id="@+id/btnSave"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:src="@android:drawable/ic_menu_save"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Save" />
     </LinearLayout>
 </LinearLayout>
