@@ -2,6 +2,7 @@ package com.android.quicknotesvibe
 
 import android.util.Base64
 import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -26,6 +27,63 @@ object GitHubApi {
         }
     }
 
+    /**
+     * List every `.md` file under the repo's `notes/` folder.
+     * Returns empty list if the folder does not exist (404) or on network error.
+     */
+    suspend fun listNoteFiles(): List<GhContent> {
+        val req = baseReq("$API/repos/${Prefs.owner()}/${Prefs.repo()}/contents/notes")
+        client.newCall(req).execute().use { resp ->
+            if (resp.code == 404) return emptyList()
+            if (!resp.isSuccessful) {
+                android.util.Log.e("GitHubApi", "list notes failed ${resp.code}")
+                return emptyList()
+            }
+            val json = resp.body!!.string()
+            val type = object : TypeToken<List<GhContent>>() {}.type
+            val items: List<GhContent> = gson.fromJson(json, type) ?: emptyList()
+            return items.filter { it.type == "file" && (it.name?.endsWith(".md") == true) }
+        }
+    }
+
+    /**
+     * Download one note file and parse it into a [Note].
+     * Expected markdown format: first line `# Title`, then blank line, then body.
+     * File name is expected to be `{uuid}.md`.
+     */
+    suspend fun downloadNote(file: GhContent): Note? {
+        val path = file.path ?: return null
+        val req = baseReq("$API/repos/${Prefs.owner()}/${Prefs.repo()}/contents/$path")
+        client.newCall(req).execute().use { resp ->
+            if (!resp.isSuccessful) return null
+            val meta = gson.fromJson(resp.body!!.string(), GhContent::class.java) ?: return null
+            val b64 = meta.content?.replace("\n", "") ?: return null
+            val text = String(Base64.decode(b64, Base64.DEFAULT))
+
+            val lines = text.lines()
+            val title = lines.firstOrNull()
+                ?.removePrefix("#")
+                ?.trim()
+                .orEmpty()
+            val body = when {
+                lines.size <= 1 -> ""
+                lines.getOrNull(1)?.isBlank() == true -> lines.drop(2).joinToString("\n")
+                else -> lines.drop(1).joinToString("\n")
+            }
+
+            val id = file.name?.removeSuffix(".md")
+                ?: java.util.UUID.randomUUID().toString()
+
+            return Note(
+                id = id,
+                title = title,
+                body = body,
+                sha = meta.sha,
+                synced = true
+            )
+        }
+    }
+
     /** Create or update note.md in the repo. Returns true on success. */
     suspend fun saveNote(note: Note): Boolean {
         val path = "notes/${note.id}.md"
@@ -46,7 +104,6 @@ object GitHubApi {
 
         client.newCall(req).execute().use { resp ->
             if (resp.isSuccessful) {
-                // Persist the new sha so future edits update instead of fail
                 gson.fromJson(resp.body!!.string(), GhPutResponse::class.java)
                     ?.content?.sha?.let { note.sha = it }
                 return true

@@ -3,7 +3,7 @@
 
     <application
         android:name=".App"
-        android:label="GitNotes"
+        android:label="QuickNotesVibe"
         android:theme="@style/Theme.Material3.DayNight"
         android:allowBackup="false">
 

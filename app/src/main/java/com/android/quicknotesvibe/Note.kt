@@ -19,4 +19,12 @@ data class GhPutRequest(
 
 data class GhPutResponse(val content: GhContent?)
 
-data class GhContent(val sha: String?)
+data class GhContent(
+    val name: String? = null,
+    val path: String? = null,
+    val sha: String? = null,
+    val content: String? = null,  // Base64 (present when fetching a single file)
+    val encoding: String? = null,
+    @SerializedName("download_url") val downloadUrl: String? = null,
+    val type: String? = null
+)
