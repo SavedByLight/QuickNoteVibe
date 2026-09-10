@@ -49,7 +49,7 @@ object GitHubApi {
     /**
      * Download one note file and parse it into a [Note].
      * Expected markdown format: first line `# Title`, then blank line, then body.
-     * File name is expected to be `{uuid}.md`.
+     * File basename (without .md) becomes the note's filename.
      */
     suspend fun downloadNote(file: GhContent): Note? {
         val path = file.path ?: return null
@@ -71,11 +71,12 @@ object GitHubApi {
                 else -> lines.drop(1).joinToString("\n")
             }
 
-            val id = file.name?.removeSuffix(".md")
+            val basename = file.name?.removeSuffix(".md")
                 ?: java.util.UUID.randomUUID().toString()
 
             return Note(
-                id = id,
+                id = basename,
+                filename = basename,
                 title = title,
                 body = body,
                 sha = meta.sha,
@@ -84,13 +85,19 @@ object GitHubApi {
         }
     }
 
-    /** Create or update note.md in the repo. Returns true on success. */
-    suspend fun saveNote(note: Note): Boolean {
-        val path = "notes/${note.id}.md"
-        val existingSha = getSha(path)
+    /**
+     * Create or update the note file on GitHub.
+     * [previousFilename] is the basename last known on GitHub; if the user renamed
+     * the file, the old path is deleted after a successful write to the new path.
+     */
+    suspend fun saveNote(note: Note, previousFilename: String? = null): Boolean {
+        val path = note.githubPath()
+        val existingSha = getSha(path) ?: note.sha.takeIf {
+            previousFilename == null || previousFilename == note.effectiveFilename()
+        }
 
         val payload = GhPutRequest(
-            message = "note: ${note.title}",
+            message = "note: ${note.title.ifBlank { note.effectiveFilename() }}",
             content = Base64.encodeToString(
                 "# ${note.title}\n\n${note.body}".toByteArray(), Base64.NO_WRAP
             ),
@@ -103,21 +110,33 @@ object GitHubApi {
             .newBuilder().put(body).build()
 
         client.newCall(req).execute().use { resp ->
-            if (resp.isSuccessful) {
-                gson.fromJson(resp.body!!.string(), GhPutResponse::class.java)
-                    ?.content?.sha?.let { note.sha = it }
-                return true
+            if (!resp.isSuccessful) {
+                android.util.Log.e("GitHubApi", "PUT failed ${resp.code}: ${resp.message}")
+                return false
             }
-            android.util.Log.e("GitHubApi", "PUT failed ${resp.code}: ${resp.message}")
-            return false
+            gson.fromJson(resp.body!!.string(), GhPutResponse::class.java)
+                ?.content?.sha?.let { note.sha = it }
+
+            // If filename changed, remove the old file so we don't leave duplicates
+            val oldName = previousFilename?.takeIf { it.isNotBlank() && it != note.effectiveFilename() }
+            if (oldName != null) {
+                runCatching { deletePath("notes/$oldName.md") }
+            }
+            return true
         }
     }
 
     suspend fun deleteNote(note: Note): Boolean {
-        val sha = note.sha ?: getSha("notes/${note.id}.md") ?: return true
+        val path = note.githubPath()
+        val sha = note.sha ?: getSha(path) ?: return true
+        return deletePath(path, sha)
+    }
+
+    private suspend fun deletePath(path: String, knownSha: String? = null): Boolean {
+        val sha = knownSha ?: getSha(path) ?: return true
         val payload = """{"message":"note deleted","sha":"$sha"}"""
         val body = payload.toRequestBody("application/json; charset=utf-8".toMediaType())
-        val url = "$API/repos/${Prefs.owner()}/${Prefs.repo()}/contents/notes/${note.id}.md"
+        val url = "$API/repos/${Prefs.owner()}/${Prefs.repo()}/contents/$path"
         client.newCall(baseReq(url).newBuilder().delete(body).build()).execute().use {
             return it.isSuccessful || it.code == 404
         }

@@ -15,12 +15,14 @@ object NotesRepository {
         val arr = JSONArray(raw)
         return (0 until arr.length()).map {
             val o = arr.getJSONObject(it)
+            val id = o.getString("id")
             Note(
-                o.getString("id"),
-                o.getString("title"),
-                o.getString("body"),
-                o.optString("sha", null).takeIf { s -> !s.isNullOrEmpty() },
-                o.optBoolean("synced")
+                id = id,
+                filename = o.optString("filename", "").ifBlank { id },
+                title = o.getString("title"),
+                body = o.getString("body"),
+                sha = o.optString("sha", null).takeIf { s -> !s.isNullOrEmpty() },
+                synced = o.optBoolean("synced")
             )
         }.toMutableList()
     }
@@ -30,6 +32,7 @@ object NotesRepository {
         notes.forEach { n ->
             arr.put(JSONObject().apply {
                 put("id", n.id)
+                put("filename", n.filename)
                 put("title", n.title)
                 put("body", n.body)
                 put("sha", n.sha ?: "")
@@ -40,23 +43,36 @@ object NotesRepository {
             .putString(FILE, arr.toString()).apply()
     }
 
-    /** Save locally, then push to GitHub on a background thread. */
+    /**
+     * Save locally, then push to GitHub.
+     * [previousFilename] is the basename previously stored on GitHub (for renames).
+     */
     fun saveAndSync(
         scope: CoroutineScope,
         ctx: Context,
         note: Note,
         notes: MutableList<Note>,
+        previousFilename: String? = null,
         onDone: () -> Unit
     ) {
+        // Ensure a usable filename before persisting
+        if (note.filename.isBlank()) {
+            note.filename = Note.sanitizeFilename(note.title.ifBlank { note.id })
+        } else {
+            note.filename = Note.sanitizeFilename(note.filename)
+        }
+
         val idx = notes.indexOfFirst { it.id == note.id }
         if (idx >= 0) notes[idx] = note else notes.add(note)
         persist(ctx, notes)
         onDone()
 
+        val oldName = previousFilename
         scope.launch(Dispatchers.IO) {
             val ok = try {
-                GitHubApi.saveNote(note)
+                GitHubApi.saveNote(note, oldName)
             } catch (e: Exception) {
+                android.util.Log.e("NotesRepository", "save failed", e)
                 false
             }
             note.synced = ok
@@ -74,8 +90,7 @@ object NotesRepository {
     /**
      * Pull all notes from the GitHub `notes/` folder and merge into the local cache.
      * - Remote notes not present locally are added.
-     * - Local notes that already exist remotely get title/body/sha updated from GitHub
-     *   (remote wins so you can restore after reinstall).
+     * - Local notes that already exist remotely get title/body/sha/filename updated.
      * - Purely local (never synced) notes are left untouched.
      */
     fun pullFromGitHub(
@@ -97,7 +112,11 @@ object NotesRepository {
 
                 for (file in files) {
                     val remote = GitHubApi.downloadNote(file) ?: continue
-                    val idx = notes.indexOfFirst { it.id == remote.id }
+                    // Match by filename first, then by id (legacy UUID-named files)
+                    val idx = notes.indexOfFirst {
+                        it.filename == remote.filename || it.id == remote.id ||
+                            it.effectiveFilename() == remote.filename
+                    }
                     if (idx < 0) {
                         notes.add(remote)
                         added++
@@ -105,11 +124,13 @@ object NotesRepository {
                         val local = notes[idx]
                         if (local.title != remote.title ||
                             local.body != remote.body ||
-                            local.sha != remote.sha
+                            local.sha != remote.sha ||
+                            local.filename != remote.filename
                         ) {
                             local.title = remote.title
                             local.body = remote.body
                             local.sha = remote.sha
+                            local.filename = remote.filename
                             local.synced = true
                             updated++
                         } else {

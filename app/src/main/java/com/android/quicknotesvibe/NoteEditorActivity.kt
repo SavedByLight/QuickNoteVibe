@@ -12,6 +12,8 @@ class NoteEditorActivity : AppCompatActivity() {
     private val scope = kotlinx.coroutines.MainScope()
     private var note: Note? = null
     private lateinit var notes: MutableList<Note>
+    /** Basename last known on GitHub — used to delete the old file if the user renames it. */
+    private var previousFilename: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -19,11 +21,14 @@ class NoteEditorActivity : AppCompatActivity() {
 
         if (!Prefs.isConfigured()) {
             Toast.makeText(this, "Set up GitHub in settings first", Toast.LENGTH_LONG).show()
-            startActivity(android.content.Intent(this, SettingsActivity::class.java)); finish(); return
+            startActivity(android.content.Intent(this, SettingsActivity::class.java))
+            finish()
+            return
         }
 
         notes = NotesRepository.load(this)
         val etTitle = findViewById<EditText>(R.id.etTitle)
+        val etFilename = findViewById<EditText>(R.id.etFilename)
         val etBody = findViewById<EditText>(R.id.etBody)
         val btnSave = findViewById<ImageButton>(R.id.btnSave)
         val btnDelete = findViewById<ImageButton>(R.id.btnDelete)
@@ -31,15 +36,55 @@ class NoteEditorActivity : AppCompatActivity() {
         val existingId = intent.getStringExtra("note_id")
         if (existingId != null) {
             note = notes.firstOrNull { it.id == existingId }
-            note?.let { etTitle.setText(it.title); etBody.setText(it.body) }
+            note?.let {
+                etTitle.setText(it.title)
+                etBody.setText(it.body)
+                etFilename.setText(it.filename.ifBlank { it.effectiveFilename() })
+                previousFilename = it.effectiveFilename()
+            }
             btnDelete.visibility = android.view.View.VISIBLE
         }
 
+        // Suggest a filename from the title when the filename field is still empty
+        etTitle.setOnFocusChangeListener { _, hasFocus ->
+            if (!hasFocus && etFilename.text.isNullOrBlank()) {
+                val suggestion = Note.sanitizeFilename(etTitle.text.toString())
+                if (suggestion.isNotBlank() && suggestion != "note") {
+                    etFilename.setText(suggestion)
+                }
+            }
+        }
+
         btnSave.setOnClickListener {
-            val n = note ?: Note(title = "", body = "").also { note = it }
-            n.title = etTitle.text.toString().trim()
+            val title = etTitle.text.toString().trim()
+            var filename = etFilename.text.toString().trim()
+            if (filename.isBlank()) {
+                filename = Note.sanitizeFilename(title.ifBlank { "note" })
+                etFilename.setText(filename)
+            } else {
+                filename = Note.sanitizeFilename(filename)
+                etFilename.setText(filename)
+            }
+
+            // Avoid colliding with another local note's filename
+            val n = note ?: Note(title = title, body = "").also { note = it }
+            val clash = notes.any { it.id != n.id && it.effectiveFilename() == filename }
+            if (clash) {
+                Toast.makeText(this, "That file name is already used by another note", Toast.LENGTH_LONG).show()
+                return@setOnClickListener
+            }
+
+            n.title = title
             n.body = etBody.text.toString()
-            NotesRepository.saveAndSync(scope, this, n, notes) { finish() }
+            n.filename = filename
+
+            NotesRepository.saveAndSync(
+                scope, this, n, notes,
+                previousFilename = previousFilename
+            ) {
+                previousFilename = n.effectiveFilename()
+                finish()
+            }
         }
 
         btnDelete.setOnClickListener {
@@ -56,7 +101,8 @@ class NoteEditorActivity : AppCompatActivity() {
                     }
                     finish()
                 }
-                .setNegativeButton("Cancel", null).show()
+                .setNegativeButton("Cancel", null)
+                .show()
         }
     }
 }

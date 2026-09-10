@@ -109,7 +109,8 @@ class MainActivity : AppCompatActivity() {
         override fun onBindViewHolder(h: VH, pos: Int) {
             val n = notes[pos]
             h.title.text = n.title.ifBlank { "(untitled)" }
-            h.sub.text = if (n.synced) "Synced ✓" else "Pending sync…"
+            val fileLabel = n.effectiveFilename() + ".md"
+            h.sub.text = (if (n.synced) "Synced ✓" else "Pending sync…") + " · " + fileLabel
             h.itemView.setOnClickListener {
                 startActivity(
                     Intent(this@MainActivity, NoteEditorActivity::class.java)
