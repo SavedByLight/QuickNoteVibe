@@ -1,0 +1,31 @@
+# Built application files
+*.apk
+*.aar
+*.ap_
+*.aab
+
+# Gradle
+.gradle/
+build/
+**/build/
+
+# Local config
+local.properties
+keystore.properties
+*.jks
+*.keystore
+keystore.b64
+
+# IDE
+.idea/
+*.iml
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Captures / logs
+captures/
+*.log
