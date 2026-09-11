@@ -29,28 +29,41 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x gradlew
 
-      # Debug APK always builds (no keystore required)
       - name: Build debug
         run: ./gradlew assembleDebug --stacktrace
 
-      # Release signing: only when all four secrets are configured
+      # secrets cannot be used in `if:` — check inside the shell instead
       - name: Decode release keystore
-        if: ${{ secrets.SIGNING_KEYSTORE != '' && secrets.SIGNING_STORE_PASSWORD != '' && secrets.SIGNING_KEY_ALIAS != '' && secrets.SIGNING_KEY_PASSWORD != '' }}
+        env:
+          SIGNING_KEYSTORE: ${{ secrets.SIGNING_KEYSTORE }}
+          SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
+          SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
         run: |
-          echo "${{ secrets.SIGNING_KEYSTORE }}" | base64 -d > "${{ github.workspace }}/quicknotevibe-release.jks"
+          if [ -z "$SIGNING_KEYSTORE" ] || [ -z "$SIGNING_STORE_PASSWORD" ] || \
+             [ -z "$SIGNING_KEY_ALIAS" ] || [ -z "$SIGNING_KEY_PASSWORD" ]; then
+            echo "Signing secrets not configured — skipping release keystore setup."
+            exit 0
+          fi
+          echo "$SIGNING_KEYSTORE" | base64 -d > "${{ github.workspace }}/quicknotevibe-release.jks"
           cat > "${{ github.workspace }}/keystore.properties" << PROPS
           storeFile=${{ github.workspace }}/quicknotevibe-release.jks
-          storePassword=${{ secrets.SIGNING_STORE_PASSWORD }}
-          keyAlias=${{ secrets.SIGNING_KEY_ALIAS }}
-          keyPassword=${{ secrets.SIGNING_KEY_PASSWORD }}
+          storePassword=${SIGNING_STORE_PASSWORD}
+          keyAlias=${SIGNING_KEY_ALIAS}
+          keyPassword=${SIGNING_KEY_PASSWORD}
           PROPS
-          # Strip accidental leading spaces from heredoc lines
           sed -i 's/^[[:space:]]*//' "${{ github.workspace }}/keystore.properties"
-          echo "keystore.properties written; storeFile=$(grep storeFile keystore.properties)"
+          echo "keystore.properties written."
 
       - name: Build signed release
-        if: ${{ secrets.SIGNING_KEYSTORE != '' && secrets.SIGNING_STORE_PASSWORD != '' && secrets.SIGNING_KEY_ALIAS != '' && secrets.SIGNING_KEY_PASSWORD != '' }}
-        run: ./gradlew assembleRelease --stacktrace
+        env:
+          SIGNING_KEYSTORE: ${{ secrets.SIGNING_KEYSTORE }}
+        run: |
+          if [ -z "$SIGNING_KEYSTORE" ] || [ ! -f keystore.properties ]; then
+            echo "No keystore — skipping assembleRelease."
+            exit 0
+          fi
+          ./gradlew assembleRelease --stacktrace
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
@@ -60,7 +73,6 @@ jobs:
           if-no-files-found: warn
 
       - name: Upload release APK
-        if: ${{ secrets.SIGNING_KEYSTORE != '' && secrets.SIGNING_STORE_PASSWORD != '' && secrets.SIGNING_KEY_ALIAS != '' && secrets.SIGNING_KEY_PASSWORD != '' }}
         uses: actions/upload-artifact@v4
         with:
           name: app-release
