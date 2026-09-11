@@ -3,9 +3,13 @@ name: Build
 on:
   push:
     branches: [main]
+    tags: ["v*"]
   pull_request:
     branches: [main]
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -32,7 +36,7 @@ jobs:
       - name: Build debug
         run: ./gradlew assembleDebug --stacktrace
 
-      # secrets cannot be used in `if:` — check inside the shell instead
+      # secrets cannot be used in step `if:` — check inside the shell instead
       - name: Decode release keystore
         env:
           SIGNING_KEYSTORE: ${{ secrets.SIGNING_KEYSTORE }}
@@ -65,14 +69,14 @@ jobs:
           fi
           ./gradlew assembleRelease --stacktrace
 
-      - name: Upload debug APK
+      - name: Upload debug APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: app-debug
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: warn
 
-      - name: Upload release APK
+      - name: Upload release APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: app-release
@@ -86,3 +90,47 @@ jobs:
           name: test-reports
           path: app/build/reports/tests/
           if-no-files-found: warn
+
+      # --- GitHub Release (push to main or version tags only; not PRs) ---
+      - name: Prepare release assets
+        if: github.event_name != 'pull_request'
+        id: assets
+        run: |
+          mkdir -p release-assets
+          if [ -f app/build/outputs/apk/debug/app-debug.apk ]; then
+            cp app/build/outputs/apk/debug/app-debug.apk \
+              "release-assets/GitNotes-debug-${{ github.run_number }}.apk"
+          fi
+          if [ -f app/build/outputs/apk/release/app-release.apk ]; then
+            cp app/build/outputs/apk/release/app-release.apk \
+              "release-assets/GitNotes-release-${{ github.run_number }}.apk"
+          fi
+          ls -la release-assets || true
+          if ls release-assets/*.apk >/dev/null 2>&1; then
+            echo "has_assets=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_assets=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create GitHub Release
+        if: github.event_name != 'pull_request' && steps.assets.outputs.has_assets == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          # Tag: use push tag (v1.2.3) or auto-tag from run number on main
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('build-{0}', github.run_number) }}
+          name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('Build {0}', github.run_number) }}
+          body: |
+            Automated build from `${{ github.sha }}` on `${{ github.ref_name }}`.
+
+            | Artifact | Notes |
+            |----------|--------|
+            | `GitNotes-release-*.apk` | Signed release (if signing secrets configured) |
+            | `GitNotes-debug-*.apk` | Debug build |
+
+            Commit: ${{ github.sha }}
+          files: release-assets/*
+          draft: false
+          prerelease: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
