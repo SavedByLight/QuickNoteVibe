@@ -4,7 +4,7 @@
 
     <application
         android:name=".App"
-        android:label="GitNotes"
+        android:label="QuickNoteVibe"
         android:icon="@drawable/ic_launcher"
         android:roundIcon="@drawable/ic_launcher"
         android:theme="@style/Theme.Material3.DayNight"

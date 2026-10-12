@@ -146,6 +146,6 @@ object GitHubApi {
         Request.Builder().url(url)
             .header("Authorization", "Bearer ${Prefs.token()}")
             .header("Accept", "application/vnd.github+json")
-            .header("User-Agent", "GitNotes-Android")
+            .header("User-Agent", "QuickNoteVibe-Android")
             .build()
 }
