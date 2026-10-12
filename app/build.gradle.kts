@@ -22,8 +22,9 @@ android {
         applicationId = "com.example.quicknotevibe"
         minSdk = 24
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0"
+        // Manual versioning: pass -PversionName=x.y.z -PversionCode=N from CI (or use defaults)
+        versionCode = (project.findProperty("versionCode") as String?)?.toIntOrNull() ?: 1
+        versionName = (project.findProperty("versionName") as String?) ?: "1.0"
     }
 
     signingConfigs {
