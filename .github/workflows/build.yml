@@ -44,12 +44,18 @@ jobs:
           SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
           SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
         run: |
+          set +e
           if [ -z "$SIGNING_KEYSTORE" ] || [ -z "$SIGNING_STORE_PASSWORD" ] || \
              [ -z "$SIGNING_KEY_ALIAS" ] || [ -z "$SIGNING_KEY_PASSWORD" ]; then
             echo "Signing secrets not configured — skipping release keystore setup."
             exit 0
           fi
           echo "\( SIGNING_KEYSTORE" | base64 -d > " \){{ github.workspace }}/quicknotevibe-release.jks"
+          if [ \( ? -ne 0 ] || [ ! -s " \){{ github.workspace }}/quicknotevibe-release.jks" ]; then
+            echo "Failed to decode SIGNING_KEYSTORE (invalid base64 or empty). Skipping release signing."
+            rm -f "${{ github.workspace }}/quicknotevibe-release.jks"
+            exit 0
+          fi
           cat > "${{ github.workspace }}/keystore.properties" << PROPS
           storeFile=${{ github.workspace }}/quicknotevibe-release.jks
           storePassword=${SIGNING_STORE_PASSWORD}
@@ -58,6 +64,7 @@ jobs:
           PROPS
           sed -i 's/^[[:space:]]*//' "${{ github.workspace }}/keystore.properties"
           echo "keystore.properties written."
+          exit 0
 
       - name: Build signed release
         env:
